@@ -21,56 +21,80 @@ def g7_drag_function(v):
 
 def compute_trajectory(mv, bc, zero_range, max_range=1000, step=1):
     g = 9.81
-    
-    # antall punkter
-    n_steps = int(max_range / step) + 1
+    step = float(step)
 
-    # lister
-    distances = np.linspace(0, max_range, n_steps)
-    velocities = np.zeros(n_steps)
-    drops = np.zeros(n_steps)
-    times = np.zeros(n_steps)
+    # konverter m/s → fps (nødvendig for G7)
+    mv_fps = mv / 0.3048
 
-    velocities[0] = mv
+    def g7_drag(v_fps):
+        drag_table = [
+            (0, 423, 0.2344, 1.30),
+            (423, 1700, 0.1716, 1.55),
+            (1700, 2400, 0.1278, 1.70),
+            (2400, 3300, 0.0906, 1.90),
+        ]
+        for vmin, vmax, a, b in drag_table:
+            if vmin <= v_fps < vmax:
+                return a, b
+        return drag_table[-1][2], drag_table[-1][3]
+
+    # juster elevasjonsvinkel grovt (ikke binary search)
+    angle = 0.0  
+    drop_at_zero = 9999
+
+    for correction in [0.001, 0.0005, 0.00025, 0.0001]:
+        while abs(drop_at_zero) > 0.01:
+            # test trajectory to zero target
+            v = mv
+            y = 0
+            x = 0
+            while x < zero_range:
+                v_fps = v / 0.3048
+                a, b = g7_drag(v_fps)
+
+                dv = (a * v_fps**b) / bc
+                dv = dv * 0.3048  # back to m/s
+
+                v -= dv * (step / v)
+                x += step
+                y += math.tan(angle) * step - g * (step / v)**2 / 2
+
+            drop_at_zero = y
+
+            if drop_at_zero > 0:
+                angle -= correction
+            else:
+                angle += correction
+
+    # full trajectory
+    distances = np.arange(0, max_range + step, step)
+    drops = []
+    times = []
+    velocities = []
+
+    v = mv
     y = 0
     t = 0
 
-    # beregn vinkelen med enkel justering (lynrask)
-    angle = 0.0
-    for _ in range(50):
-        y_test = 0
-        v_test = mv
-        for d in range(1, int(zero_range/step)):
-            a, b = g7_drag_function(v_test)
-            v_test -= (a * v_test**b / bc) * (step / v_test)
-        if y_test > 0:
-            angle -= 0.0001
-        else:
-            angle += 0.0001
+    for x in distances:
+        v_fps = v / 0.3048
+        a, b = g7_drag(v_fps)
+        dv = (a * v_fps**b) / bc
+        dv = dv * 0.3048
 
-    # hovedløp
-    v = mv
-    for i in range(1, n_steps):
-        dx = distances[i] - distances[i-1]
+        v -= dv * (step / v)
+        t += step / v
+        y += math.tan(angle) * step - g * (step / v)**2 / 2
 
-        # drag
-        a, b = g7_drag_function(v)
-        dv = (a * v**b) / bc
+        drops.append(y)
+        times.append(t)
+        velocities.append(v)
 
-        # oppdater hastighet og posisjon
-        v -= dv * (dx / v)
-        t += dx / v
-        y -= g * (dx / v)**2 / 2  # vertikal bevegelse
+    # juster drop slik at 0 på innskyting
+    zero_index = int(zero_range / step)
+    drops = np.array(drops) - drops[zero_index]
 
-        velocities[i] = v
-        drops[i] = y
-        times[i] = t
-
-    # korriger drop slik at 0 cm ved innskyting
-    zero_drop = drops[int(zero_range / step)]
-    drops = drops - zero_drop
-
-    return distances, drops, times, velocities
+    return np.array(distances), drops, np.array(times), np.array(velocities)
 
 st.title("AmmoTrace – Kulebanekalkulator")
 
