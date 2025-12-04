@@ -19,65 +19,59 @@ def g7_drag_function(v):
 
     return drag_table[-1][2], drag_table[-1][3]  # fallback
 
-def compute_trajectory(mv, bc, zero_range, max_range=1000):
+def compute_trajectory(mv, bc, zero_range, max_range=1000, step=1):
     g = 9.81
-    dt = 0.001
-
-    # Funksjon for å simulere kun høyde ved en gitt vinkel
-    def simulate_height(angle):
-        v = mv
-        x = 0
-        y = 0
-        t = 0
-        while x < zero_range and v > 0:
-            a, b = g7_drag_function(v)
-            dvdt = -(a * (v**b)) / bc
-            v += dvdt * dt
-            t += dt
-            x += v * dt * np.cos(angle)
-            y += v * dt * np.sin(angle) - 0.5*g*(dt**2)
-        return y
-
-    # --- 1: Finn riktig vinkel via binary search ---
-    low = -0.1     # -5.7°
-    high = 0.1     # +5.7°
     
-    for _ in range(40):  # 40 iterasjoner gir ekstrem presisjon
-        mid = (low + high) / 2
-        h = simulate_height(mid)
-        if h > 0:
-            high = mid
-        else:
-            low = mid
+    # antall punkter
+    n_steps = int(max_range / step) + 1
 
-    angle = (low + high) / 2
+    # lister
+    distances = np.linspace(0, max_range, n_steps)
+    velocities = np.zeros(n_steps)
+    drops = np.zeros(n_steps)
+    times = np.zeros(n_steps)
 
-    # --- 2: Full simulering ut til maks rekkevidde ---
-    distances = []
-    drops = []
-    velocities = []
-    times = []
-
-    v = mv
-    x = 0
+    velocities[0] = mv
     y = 0
     t = 0
 
-    while x <= max_range and v > 0:
-        distances.append(x)
-        drops.append(y)
-        velocities.append(v)
-        times.append(t)
+    # beregn vinkelen med enkel justering (lynrask)
+    angle = 0.0
+    for _ in range(50):
+        y_test = 0
+        v_test = mv
+        for d in range(1, int(zero_range/step)):
+            a, b = g7_drag_function(v_test)
+            v_test -= (a * v_test**b / bc) * (step / v_test)
+        if y_test > 0:
+            angle -= 0.0001
+        else:
+            angle += 0.0001
 
+    # hovedløp
+    v = mv
+    for i in range(1, n_steps):
+        dx = distances[i] - distances[i-1]
+
+        # drag
         a, b = g7_drag_function(v)
-        dvdt = -(a * (v**b)) / bc
-        v += dvdt * dt
-        t += dt
+        dv = (a * v**b) / bc
 
-        x += v * dt * np.cos(angle)
-        y += v * dt * np.sin(angle) - 0.5*g*(dt**2)
+        # oppdater hastighet og posisjon
+        v -= dv * (dx / v)
+        t += dx / v
+        y -= g * (dx / v)**2 / 2  # vertikal bevegelse
 
-    return np.array(distances), np.array(drops), np.array(times), np.array(velocities)
+        velocities[i] = v
+        drops[i] = y
+        times[i] = t
+
+    # korriger drop slik at 0 cm ved innskyting
+    zero_drop = drops[int(zero_range / step)]
+    drops = drops - zero_drop
+
+    return distances, drops, times, velocities
+
 
 
 
