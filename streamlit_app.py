@@ -72,9 +72,6 @@ def compute_trajectory(mv, bc, zero_range, max_range=1000, step=1):
 
     return distances, drops, times, velocities
 
-
-
-
 st.title("AmmoTrace – Kulebanekalkulator")
 
 st.subheader("1. Oppgi data for skuddet")
