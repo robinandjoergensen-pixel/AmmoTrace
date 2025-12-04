@@ -3,48 +3,59 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-st.title("AmmoTrace – Enkel G7 Kulebanekalkulator")
+st.title("AmmoTrace – Stabil G7 Kulebanekalkulator")
 
-# --- G7 drag modell (fps-basert, konvertert) ---
-def g7_drag(v):
-    drag_table = [
+# --- G7 dragmodell ---
+def g7_drag(v_fps):
+    table = [
         (0, 423, 0.2344, 1.30),
         (423, 1700, 0.1716, 1.55),
         (1700, 2400, 0.1278, 1.70),
         (2400, 3300, 0.0906, 1.90),
     ]
-    for vmin, vmax, a, b in drag_table:
-        if vmin <= v < vmax:
+    for vmin, vmax, a, b in table:
+        if vmin <= v_fps < vmax:
             return a, b
-    return drag_table[-1][2], drag_table[-1][3]
+    return table[-1][2], table[-1][3]
 
-# --- Enkel G7-beregning uten vinkel-søk ---
+
+# --- Stabil og enkel G7 kulebane ---
 def simple_g7_trajectory(mv, bc, max_range=1000, step=1):
     g = 9.81
     distances = np.arange(0, max_range + step, step)
+    
     drops = []
     velocities = []
     times = []
 
-    v = mv
-    y = 0
-    t = 0
+    v = float(mv)
+    y = 0.0
+    t = 0.0
 
     for x in distances:
-        # drag i fps (konverter m/s → fps)
+
+        # Drag (fps → m/s)
         v_fps = v / 0.3048
         a, b = g7_drag(v_fps)
         dv = (a * v_fps**b) / bc
         dv = dv * 0.3048  # tilbake til m/s
 
-        # fall-modell (flat-fire)
-        t += step / v
-        y -= 0.5 * g * (step / v)**2
+        # Oppdater hastighet
+        if v > 0:
+            v = float(v - dv * (step / v))
+        else:
+            v = 0.0
 
-        v -= dv * (step / v)
+        # Oppdater tid
+        if v > 0:
+            t = float(t + step / v)
+
+        # Oppdater høyde (flat-fire)
+        if v > 0:
+            y = float(y - 0.5 * g * (step / v)**2)
 
         drops.append(y)
-        velocities.append(max(v, 0))
+        velocities.append(v)
         times.append(t)
 
     return distances, np.array(drops), np.array(times), np.array(velocities)
@@ -61,7 +72,6 @@ if st.button("Beregn kulebane"):
     dist, drop, t, vel = simple_g7_trajectory(mv, bc)
 
     drop_cm = drop * 100
-
     idx = np.argmin(abs(dist - target_range))
 
     st.write(f"**Fall ved {target_range} m:** {drop_cm[idx]:.1f} cm")
