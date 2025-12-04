@@ -18,39 +18,41 @@ def g7_drag_function(v):
             return a, b
 
     return drag_table[-1][2], drag_table[-1][3]  # fallback
-def compute_trajectory(mv, bc, zero_range, max_range=1000, step=1):
+
+def compute_trajectory(mv, bc, zero_range, max_range=1000):
     g = 9.81
-    dt = 0.001  # tidssteg (gir god nøyaktighet)
+    dt = 0.001
+
+    # Funksjon for å simulere kun høyde ved en gitt vinkel
+    def simulate_height(angle):
+        v = mv
+        x = 0
+        y = 0
+        t = 0
+        while x < zero_range and v > 0:
+            a, b = g7_drag_function(v)
+            dvdt = -(a * (v**b)) / bc
+            v += dvdt * dt
+            t += dt
+            x += v * dt * np.cos(angle)
+            y += v * dt * np.sin(angle) - 0.5*g*(dt**2)
+        return y
+
+    # --- 1: Finn riktig vinkel via binary search ---
+    low = -0.1     # -5.7°
+    high = 0.1     # +5.7°
     
-    # Startbetingelser
-    v = mv
-    x = 0
-    y = 0
-    time = 0
+    for _ in range(40):  # 40 iterasjoner gir ekstrem presisjon
+        mid = (low + high) / 2
+        h = simulate_height(mid)
+        if h > 0:
+            high = mid
+        else:
+            low = mid
 
-    # Juster siktelinje for å treffe på innskytingsavstand
-    # Itererer små vinkler til vi treffer
-    angle = 0.0
-    for _ in range(200):
-        test_v = mv
-        test_x = 0
-        test_y = 0
-        test_time = 0
-        angle += 0.0001  # radianer
-        
-        while test_x < zero_range:
-            a, b = g7_drag_function(test_v)
-            dvdt = -(a * (test_v**b)) / bc
-            test_v += dvdt * dt
-            test_time += dt
-            
-            test_x += test_v * dt * np.cos(angle)
-            test_y += test_v * dt * np.sin(angle) - 0.5*g*(dt**2)
+    angle = (low + high) / 2
 
-        if abs(test_y) < 0.01:  # nesten midt i blinken
-            break
-
-    # Faktisk løp
+    # --- 2: Full simulering ut til maks rekkevidde ---
     distances = []
     drops = []
     velocities = []
@@ -59,23 +61,24 @@ def compute_trajectory(mv, bc, zero_range, max_range=1000, step=1):
     v = mv
     x = 0
     y = 0
-    time = 0
+    t = 0
 
-    while x <= max_range:
+    while x <= max_range and v > 0:
         distances.append(x)
         drops.append(y)
         velocities.append(v)
-        times.append(time)
+        times.append(t)
 
         a, b = g7_drag_function(v)
         dvdt = -(a * (v**b)) / bc
         v += dvdt * dt
-        time += dt
-        
+        t += dt
+
         x += v * dt * np.cos(angle)
         y += v * dt * np.sin(angle) - 0.5*g*(dt**2)
 
     return np.array(distances), np.array(drops), np.array(times), np.array(velocities)
+
 
 
 st.title("AmmoTrace – Kulebanekalkulator")
@@ -84,7 +87,7 @@ st.subheader("1. Oppgi data for skuddet")
 
 # Input-felter for bruker
 muzzle_velocity = st.number_input("Munningshastighet (m/s)", value=800)
-bc = st.number_input("Ballistisk koeffisient (G1)", value=0.45)
+bc = st.number_input("Ballistisk koeffisient (G7)", value=0.25)
 zero_range = st.number_input("Innskytingsavstand (meter)", value=100)
 target_range = st.number_input("Målavstand (meter)", value=300)
 
