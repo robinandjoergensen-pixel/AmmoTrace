@@ -3,7 +3,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-st.title("Kulebanekalkulator")
+st.title("Kulebanekalkulator :)")
 
 st.subheader("Inndata")
 
